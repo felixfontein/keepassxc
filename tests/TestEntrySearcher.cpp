@@ -22,23 +22,32 @@ QTEST_GUILESS_MAIN(TestEntrySearcher)
 
 void TestEntrySearcher::initTestCase()
 {
-    m_groupRoot = new Group();
+    m_rootGroup = new Group();
 }
 
 void TestEntrySearcher::cleanupTestCase()
 {
-    delete m_groupRoot;
+    delete m_rootGroup;
 }
 
 void TestEntrySearcher::testSearch()
 {
+    /**
+     * Root
+     * - group1 (search disabled)
+     *   - group11
+     * - group2
+     *   - group21
+     *     - group211
+     *       - group2111
+     */
     Group* group1 = new Group();
     Group* group2 = new Group();
     Group* group3 = new Group();
 
-    group1->setParent(m_groupRoot);
-    group2->setParent(m_groupRoot);
-    group3->setParent(m_groupRoot);
+    group1->setParent(m_rootGroup);
+    group2->setParent(m_rootGroup);
+    group3->setParent(m_rootGroup);
 
     Group* group11 = new Group();
 
@@ -55,15 +64,15 @@ void TestEntrySearcher::testSearch()
     group1->setSearchingEnabled(Group::Disable);
 
     Entry* eRoot = new Entry();
-    eRoot->setNotes("test search term test");
-    eRoot->setGroup(m_groupRoot);
+    eRoot->setTitle("test search term test");
+    eRoot->setGroup(m_rootGroup);
 
     Entry* eRoot2 = new Entry();
     eRoot2->setNotes("test term test");
-    eRoot2->setGroup(m_groupRoot);
+    eRoot2->setGroup(m_rootGroup);
 
     Entry* e1 = new Entry();
-    e1->setNotes("test search term test");
+    e1->setUsername("test search term test");
     e1->setGroup(group1);
 
     Entry* e11 = new Entry();
@@ -71,28 +80,36 @@ void TestEntrySearcher::testSearch()
     e11->setGroup(group11);
 
     Entry* e2111 = new Entry();
-    e2111->setNotes("test search term test");
+    e2111->setTitle("test search term test");
     e2111->setGroup(group2111);
 
     Entry* e2111b = new Entry();
     e2111b->setNotes("test search test");
+    e2111b->setPassword("testpass");
     e2111b->setGroup(group2111);
 
     Entry* e3 = new Entry();
-    e3->setNotes("test search term test");
+    e3->setUrl("test search term test");
     e3->setGroup(group3);
 
     Entry* e3b = new Entry();
-    e3b->setNotes("test search test");
+    e3b->setTitle("test search test");
+    e3b->setPassword("realpass");
     e3b->setGroup(group3);
 
-    m_searchResult = m_entrySearcher.search("search term", m_groupRoot);
-    QCOMPARE(m_searchResult.count(), 2);
+    m_searchResult = m_entrySearcher.search("search", m_rootGroup);
+    QCOMPARE(m_searchResult.count(), 5);
+
+    m_searchResult = m_entrySearcher.search("search term", m_rootGroup);
+    QCOMPARE(m_searchResult.count(), 3);
 
     m_searchResult = m_entrySearcher.search("search term", group211);
     QCOMPARE(m_searchResult.count(), 1);
 
-    // Parent group disabled search
+    m_searchResult = m_entrySearcher.search("password:testpass", m_rootGroup);
+    QCOMPARE(m_searchResult.count(), 1);
+
+    // Parent group has search disabled
     m_searchResult = m_entrySearcher.search("search term", group11);
     QCOMPARE(m_searchResult.count(), 0);
 }
@@ -102,38 +119,39 @@ void TestEntrySearcher::testAndConcatenationInSearch()
     Entry* entry = new Entry();
     entry->setNotes("abc def ghi");
     entry->setTitle("jkl");
-    entry->setGroup(m_groupRoot);
+    entry->setGroup(m_rootGroup);
 
-    m_searchResult = m_entrySearcher.search("", m_groupRoot);
+    m_searchResult = m_entrySearcher.search("", m_rootGroup);
     QCOMPARE(m_searchResult.count(), 1);
 
-    m_searchResult = m_entrySearcher.search("def", m_groupRoot);
+    m_searchResult = m_entrySearcher.search("def", m_rootGroup);
     QCOMPARE(m_searchResult.count(), 1);
 
-    m_searchResult = m_entrySearcher.search("  abc    ghi  ", m_groupRoot);
+    m_searchResult = m_entrySearcher.search("  abc    ghi  ", m_rootGroup);
     QCOMPARE(m_searchResult.count(), 1);
 
-    m_searchResult = m_entrySearcher.search("ghi ef", m_groupRoot);
+    m_searchResult = m_entrySearcher.search("ghi ef", m_rootGroup);
     QCOMPARE(m_searchResult.count(), 1);
 
-    m_searchResult = m_entrySearcher.search("abc ef xyz", m_groupRoot);
+    m_searchResult = m_entrySearcher.search("abc ef xyz", m_rootGroup);
     QCOMPARE(m_searchResult.count(), 0);
 
-    m_searchResult = m_entrySearcher.search("abc kl", m_groupRoot);
+    m_searchResult = m_entrySearcher.search("abc kl", m_rootGroup);
     QCOMPARE(m_searchResult.count(), 1);
 }
 
 void TestEntrySearcher::testAllAttributesAreSearched()
 {
     Entry* entry = new Entry();
-    entry->setGroup(m_groupRoot);
+    entry->setGroup(m_rootGroup);
 
     entry->setTitle("testTitle");
     entry->setUsername("testUsername");
     entry->setUrl("testUrl");
     entry->setNotes("testNote");
 
-    m_searchResult = m_entrySearcher.search("testTitle testUsername testUrl testNote", m_groupRoot);
+    // Default is to AND all terms together
+    m_searchResult = m_entrySearcher.search("testTitle testUsername testUrl testNote", m_rootGroup);
     QCOMPARE(m_searchResult.count(), 1);
 }
 

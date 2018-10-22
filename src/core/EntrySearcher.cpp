@@ -28,17 +28,14 @@ EntrySearcher::EntrySearcher(bool caseSensitive)
 {
 }
 
-QList<Entry*> EntrySearcher::search(const QString& searchString, const Group* group)
+QList<Entry*> EntrySearcher::search(const QString& searchString, const Group* baseGroup, bool forceSearch)
 {
+    Q_ASSERT(baseGroup);
+
     QList<Entry*> results;
-
-    if (group->resolveSearchingEnabled()) {
-        results.append(searchEntries(searchString, group->entries()));
-    }
-
-    for (Group* childGroup : group->children()) {
-        if (childGroup->resolveSearchingEnabled()) {
-            results.append(searchEntries(searchString, childGroup->entries()));
+    for (const auto group : baseGroup->groupsRecursive(true)) {
+        if (forceSearch || group->resolveSearchingEnabled()) {
+            results.append(searchEntries(searchString, group->entries()));
         }
     }
 

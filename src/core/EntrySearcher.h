@@ -30,7 +30,7 @@ class EntrySearcher
 public:
     explicit EntrySearcher(bool caseSensitive = false);
 
-    QList<Entry*> search(const QString& searchString, const Group* group);
+    QList<Entry*> search(const QString& searchString, const Group* baseGroup, bool forceSearch = false);
     QList<Entry*> searchEntries(const QString& searchString, const QList<Entry*>& entries);
 
     void setCaseSensitive(bool state);

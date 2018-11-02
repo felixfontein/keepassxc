@@ -18,6 +18,7 @@
 
 #include "SearchWidget.h"
 #include "ui_SearchWidget.h"
+#include "ui_SearchHelpWidget.h"
 
 #include <QKeyEvent>
 #include <QMenu>
@@ -30,14 +31,21 @@
 SearchWidget::SearchWidget(QWidget* parent)
     : QWidget(parent)
     , m_ui(new Ui::SearchWidget())
+    , m_helpUi(new Ui::SearchHelpWidget())
+    , m_helpWidget(new QWidget(parent))
 {
     m_ui->setupUi(this);
+
+    m_helpUi->setupUi(m_helpWidget);
+    m_helpWidget->setWindowFlags(Qt::FramelessWindowHint | Qt::Tool);
+    m_helpWidget->hide();
 
     m_searchTimer = new QTimer(this);
     m_searchTimer->setSingleShot(true);
 
     connect(m_ui->searchEdit, SIGNAL(textChanged(QString)), SLOT(startSearchTimer()));
     connect(m_ui->clearIcon, SIGNAL(triggered(bool)), m_ui->searchEdit, SLOT(clear()));
+    connect(m_ui->helpIcon, SIGNAL(triggered()), SLOT(toggleHelp()));
     connect(m_searchTimer, SIGNAL(timeout()), this, SLOT(startSearch()));
     connect(this, SIGNAL(escapePressed()), m_ui->searchEdit, SLOT(clear()));
 
@@ -60,6 +68,9 @@ SearchWidget::SearchWidget(QWidget* parent)
     m_ui->searchIcon->setMenu(searchMenu);
     m_ui->searchEdit->addAction(m_ui->searchIcon, QLineEdit::LeadingPosition);
 
+    m_ui->helpIcon->setIcon(filePath()->icon("actions", "system-help"));
+    m_ui->searchEdit->addAction(m_ui->helpIcon, QLineEdit::TrailingPosition);
+
     m_ui->clearIcon->setIcon(filePath()->icon("actions", "edit-clear-locationbar-rtl"));
     m_ui->clearIcon->setVisible(false);
     m_ui->searchEdit->addAction(m_ui->clearIcon, QLineEdit::TrailingPosition);
@@ -81,13 +92,6 @@ bool SearchWidget::eventFilter(QObject* obj, QEvent* event)
         if (keyEvent->key() == Qt::Key_Escape) {
             emit escapePressed();
             return true;
-        } else if (keyEvent->matches(QKeySequence::Copy)) {
-            // If Control+C is pressed in the search edit when no text
-            // is selected, copy the password of the current entry
-            if (!m_ui->searchEdit->hasSelectedText()) {
-                emit copyPressed();
-                return true;
-            }
         } else if (keyEvent->matches(QKeySequence::MoveToNextLine)) {
             if (m_ui->searchEdit->cursorPosition() == m_ui->searchEdit->text().length()) {
                 // If down is pressed at EOL, move the focus to the entry view
@@ -99,9 +103,24 @@ bool SearchWidget::eventFilter(QObject* obj, QEvent* event)
                 return true;
             }
         }
+    } else if (event->type() == QEvent::FocusOut) {
+        m_helpWidget->hide();
     }
 
-    return QObject::eventFilter(obj, event);
+    return QWidget::eventFilter(obj, event);
+}
+
+void SearchWidget::resizeEvent(QResizeEvent* event)
+{
+    windowMoved();
+    QWidget::resizeEvent(event);
+}
+
+void SearchWidget::windowMoved()
+{
+    if (m_helpWidget->isVisible()) {
+        moveHelpPopup();
+    }
 }
 
 void SearchWidget::connectSignals(SignalMultiplexer& mx)
@@ -177,4 +196,20 @@ void SearchWidget::searchFocus()
 {
     m_ui->searchEdit->setFocus();
     m_ui->searchEdit->selectAll();
+}
+
+void SearchWidget::toggleHelp()
+{
+    if (m_helpWidget->isVisible()) {
+        m_helpWidget->hide();
+    } else {
+        moveHelpPopup();
+        m_helpWidget->show();
+    }
+}
+
+void SearchWidget::moveHelpPopup()
+{
+    auto pos = mapToGlobal(m_ui->searchEdit->geometry().bottomLeft());
+    m_helpWidget->move(pos);
 }

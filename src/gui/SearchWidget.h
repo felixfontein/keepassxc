@@ -28,6 +28,7 @@
 namespace Ui
 {
     class SearchWidget;
+    class SearchHelpWidget;
 }
 
 class SearchWidget : public QWidget
@@ -45,7 +46,9 @@ public:
     void setLimitGroup(bool state);
 
 protected:
+    // Filter key presses in the search field
     bool eventFilter(QObject* obj, QEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
 
 signals:
     void search(const QString& text);
@@ -58,6 +61,7 @@ signals:
 
 public slots:
     void databaseChanged(DatabaseWidget* dbWidget = nullptr);
+    void windowMoved();
 
 private slots:
     void startSearchTimer();
@@ -65,9 +69,14 @@ private slots:
     void updateCaseSensitive();
     void updateLimitGroup();
     void searchFocus();
+    void toggleHelp();
 
 private:
+    void moveHelpPopup();
+
     const QScopedPointer<Ui::SearchWidget> m_ui;
+    const QScopedPointer<Ui::SearchHelpWidget> m_helpUi;
+    QWidget* m_helpWidget;
     QTimer* m_searchTimer;
     QAction* m_actionCaseSensitive;
     QAction* m_actionLimitGroup;

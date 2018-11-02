@@ -55,6 +55,9 @@ public:
         PasswordGeneratorScreen = 3
     };
 
+signals:
+    void windowMoved();
+
 public slots:
     void openDatabase(const QString& fileName, const QString& pw = QString(), const QString& keyFile = QString());
     void appExit();
@@ -78,6 +81,7 @@ public slots:
 protected:
     void closeEvent(QCloseEvent* event) override;
     void changeEvent(QEvent* event) override;
+    void moveEvent(QMoveEvent* event) override;
 
 private slots:
     void setMenuActionState(DatabaseWidget::Mode mode = DatabaseWidget::None);

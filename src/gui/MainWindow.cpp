@@ -129,6 +129,7 @@ MainWindow::MainWindow()
     // Setup the search widget in the toolbar
     SearchWidget* search = new SearchWidget();
     search->connectSignals(m_actionMultiplexer);
+    connect(this, SIGNAL(windowMoved()), search, SLOT(windowMoved()));
     m_searchWidgetAction = m_ui->toolBar->addWidget(search);
     m_searchWidgetAction->setEnabled(false);
 
@@ -773,6 +774,12 @@ void MainWindow::changeEvent(QEvent* event)
     } else {
         QMainWindow::changeEvent(event);
     }
+}
+
+void MainWindow::moveEvent(QMoveEvent* event)
+{
+    emit windowMoved();
+    QMainWindow::moveEvent(event);
 }
 
 void MainWindow::saveWindowInformation()

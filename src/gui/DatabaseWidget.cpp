@@ -237,26 +237,6 @@ QSharedPointer<Database> DatabaseWidget::database() const
     return m_db;
 }
 
-QString DatabaseWidget::databaseName() const
-{
-    return m_databaseName;
-}
-
-void DatabaseWidget::setDatabaseName(const QString& databaseName)
-{
-    m_databaseName = databaseName;
-}
-
-QString DatabaseWidget::databaseFilePath() const
-{
-    return m_databaseFileName;
-}
-
-void DatabaseWidget::setDatabaseFilePath(const QString& filePath)
-{
-    m_databaseFileName = filePath;
-}
-
 DatabaseWidget::Mode DatabaseWidget::currentMode() const
 {
     if (currentWidget() == nullptr) {
@@ -270,11 +250,6 @@ DatabaseWidget::Mode DatabaseWidget::currentMode() const
     } else {
         return DatabaseWidget::EditMode;
     }
-}
-
-bool DatabaseWidget::isInEditMode() const
-{
-    return currentMode() == DatabaseWidget::EditMode;
 }
 
 bool DatabaseWidget::isEditWidgetModified() const
@@ -368,11 +343,6 @@ void DatabaseWidget::emitCurrentModeChanged()
     emit currentModeChanged(currentMode());
 }
 
-QSharedPointer<Database> DatabaseWidget::database()
-{
-    return m_db;
-}
-
 void DatabaseWidget::createEntry()
 {
     Q_ASSERT(m_groupView->currentGroup());
@@ -382,7 +352,7 @@ void DatabaseWidget::createEntry()
 
     m_newEntry = new Entry();
 
-    if (isInSearchMode()) {
+    if (m_entryView->inSearchMode()) {
         m_newEntry->setTitle(getCurrentSearch());
         endSearch();
     }
@@ -410,11 +380,11 @@ void DatabaseWidget::setIconFromParent()
     }
 }
 
-void DatabaseWidget::replaceDatabase(Database* db)
+void DatabaseWidget::replaceDatabase(QSharedPointer<Database> db)
 {
-    m_db.reset(db);
+    m_db = std::move(db);
     m_groupView->changeDatabase(m_db.data());
-    emit databaseChanged(m_db.data(), m_databaseModified);
+    emit databaseChanged(m_db, m_databaseModified);
 }
 
 void DatabaseWidget::cloneEntry()
@@ -815,7 +785,7 @@ void DatabaseWidget::switchToGroupEdit(Group* group, bool create)
 void DatabaseWidget::openDatabase(bool accepted)
 {
     if (accepted) {
-        replaceDatabase(qobject_cast<DatabaseOpenWidget*>(sender())->database());
+        replaceDatabase(qobject_cast<DatabaseWidget*>(sender())->database());
         setCurrentWidget(m_mainWidget);
         emit unlockedDatabase();
 
@@ -829,7 +799,7 @@ void DatabaseWidget::openDatabase(bool accepted)
     } else {
         m_fileWatcher.removePath(m_db->filePath());
         if (m_databaseOpenWidget->database()) {
-            delete m_databaseOpenWidget->database();
+            m_databaseOpenWidget->database().reset();
         }
         emit closeRequest();
     }
@@ -843,20 +813,20 @@ void DatabaseWidget::mergeDatabase(bool accepted)
             return;
         }
 
-        Database* srcDb = static_cast<DatabaseOpenWidget*>(sender())->database();
+        auto srcDb = qobject_cast<DatabaseOpenWidget*>(sender())->database();
 
         if (!srcDb) {
             m_messageWidget->showMessage(tr("No source database, nothing to do."), MessageWidget::Error);
             return;
         }
 
-        Merger merger(srcDb, m_db.data());
+        Merger merger(srcDb.data(), m_db.data());
         merger.merge();
     }
 
     m_databaseOpenMergeWidget->clearForms();
     setCurrentWidget(m_mainWidget);
-    emit databaseMerged(m_db.data());
+    emit databaseMerged(m_db);
 }
 
 void DatabaseWidget::unlockDatabase(bool accepted)
@@ -866,7 +836,7 @@ void DatabaseWidget::unlockDatabase(bool accepted)
         return;
     }
 
-    Database* db = nullptr;
+    auto db = QSharedPointer<Database>::create();
     if (sender() == m_unlockDatabaseDialog) {
         db = m_unlockDatabaseDialog->database();
     } else if (sender() == m_unlockDatabaseWidget) {
@@ -1023,7 +993,7 @@ void DatabaseWidget::databaseSaved()
 
 void DatabaseWidget::refreshSearch()
 {
-    if (isInSearchMode()) {
+    if (m_entryView->inSearchMode()) {
         search(m_lastSearchText);
     }
 }
@@ -1047,7 +1017,7 @@ void DatabaseWidget::search(const QString& searchtext)
     m_lastSearchText = searchtext;
 
     // Display a label detailing our search results
-    if (searchResult.size() > 0) {
+    if (!searchResult.isEmpty()) {
         m_searchingLabel->setText(tr("Search Results (%1)").arg(searchResult.size()));
     } else {
         m_searchingLabel->setText(tr("No Results"));
@@ -1073,7 +1043,7 @@ void DatabaseWidget::setSearchLimitGroup(bool state)
 void DatabaseWidget::onGroupChanged(Group* group)
 {
     // Intercept group changes if in search mode
-    if (isInSearchMode())
+    if (m_entryView->inSearchMode())
         search(m_lastSearchText);
     else
         m_entryView->setGroup(group);
@@ -1086,7 +1056,7 @@ QString DatabaseWidget::getCurrentSearch()
 
 void DatabaseWidget::endSearch()
 {
-    if (isInSearchMode()) {
+    if (m_entryView->inSearchMode()) {
         emit listModeAboutToActivate();
 
         // Show the normal entry view of the current group
@@ -1137,20 +1107,10 @@ void DatabaseWidget::emitPressedGroup(Group* currentGroup)
     emit pressedGroup(currentGroup);
 }
 
-bool DatabaseWidget::dbHasKey() const
-{
-    return m_db->hasKey();
-}
-
 bool DatabaseWidget::canDeleteCurrentGroup() const
 {
     bool isRootGroup = m_db->rootGroup() == m_groupView->currentGroup();
     return !isRootGroup;
-}
-
-bool DatabaseWidget::isInSearchMode() const
-{
-    return m_entryView->inSearchMode();
 }
 
 Group* DatabaseWidget::currentGroup() const
@@ -1158,9 +1118,44 @@ Group* DatabaseWidget::currentGroup() const
     return m_groupView->currentGroup();
 }
 
-void DatabaseWidget::lock()
+void DatabaseWidget::closeEvent(QCloseEvent* event)
+{
+    if (!lock()) {
+        event->ignore();
+        return;
+    }
+
+    QStackedWidget::closeEvent(event);
+    event->accept();
+}
+
+bool DatabaseWidget::lock()
 {
     Q_ASSERT(currentMode() != DatabaseWidget::LockedMode);
+
+    auto result = MessageBox::question(this, tr("Lock Database?"),
+        tr("You are editing an entry. Discard changes and lock anyway?"),
+        QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Cancel);
+    if (result == QMessageBox::Cancel) {
+        return false;
+    }
+
+    if (m_db->isModified()) {
+        if (config()->get("AutoSaveOnExit").toBool()) {
+            if (!m_db->save()) {
+                return false;
+            }
+        } else if (currentMode() != DatabaseWidget::LockedMode) {
+            result = MessageBox::question(this, tr("Save changes?"),
+                tr("\"%1\" was modified.\nSave changes?").arg(m_db->metadata()->name().toHtmlEscaped()),
+                QMessageBox::Yes | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Yes);
+            if (result == QMessageBox::Yes && !m_db->save()) {
+                return false;
+            } else if (result == QMessageBox::Cancel) {
+                return false;
+            }
+        }
+    }
 
     if (m_groupView->currentGroup()) {
         m_groupBeforeLock = m_groupView->currentGroup()->uuid();
@@ -1174,12 +1169,13 @@ void DatabaseWidget::lock()
 
     endSearch();
     clearAllWidgets();
-    m_unlockDatabaseWidget->load(m_filePath);
+    m_unlockDatabaseWidget->load(m_db->filePath());
     setCurrentWidget(m_unlockDatabaseWidget);
-    Database* newDb = new Database();
-    newDb->metadata()->setName(m_db->metadata()->name());
+    auto newDb = QSharedPointer<Database>::create(m_db->filePath());
     replaceDatabase(newDb);
     emit lockedDatabase();
+
+    return true;
 }
 
 void DatabaseWidget::updateFilePath(const QString& filePath)
@@ -1300,7 +1296,7 @@ void DatabaseWidget::reloadDatabaseFile()
                 entryBeforeReload = m_entryView->currentEntry()->uuid();
             }
 
-            replaceDatabase(db.data());
+            replaceDatabase(db);
             restoreGroupEntryFocus(groupBeforeReload, entryBeforeReload);
         }
     } else {
@@ -1423,7 +1419,7 @@ EntryView* DatabaseWidget::entryView()
     return m_entryView;
 }
 
-void DatabaseWidget::showUnlockDialog()
+bool DatabaseWidget::unlock()
 {
     m_unlockDatabaseDialog->clearForms();
     m_unlockDatabaseDialog->setFilePath(m_db->filePath());
@@ -1435,11 +1431,6 @@ void DatabaseWidget::showUnlockDialog()
 
     m_unlockDatabaseDialog->show();
     m_unlockDatabaseDialog->activateWindow();
-}
-
-void DatabaseWidget::closeUnlockDialog()
-{
-    m_unlockDatabaseDialog->close();
 }
 
 void DatabaseWidget::showMessage(const QString& text,
